@@ -1,90 +1,175 @@
 <!doctype html>
 <html>
-  <head>
-    <title>Fin for SFDC</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://cdn.tailwindcss.com"></script>
+<head>
+  <title>Fin for Salesforce</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsrsasign"></script>
 
-    <script>
-      function reset() {
-        const cookies = document.cookie.split(";");
+  <script>
+    // -------- DEMO HELPERS --------
+    function randomUserId() {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    }
 
-        for (let i = 0; i < cookies.length; i++) {
+    function randomName() {
+      const names = [
+        "James", "Tess", "Alex", "Jordan",
+        "Taylor", "Sam", "Avery", "Riley", "Luis"
+      ];
+      return names[Math.floor(Math.random() * names.length)];
+    }
 
-            const cookie = cookies[i];
+    // New rule: <name><first 6 digits of user_id>@sfdcdemo.com
+    function emailFromNameAndUserId(name, user_id) {
+      const cleanName = name.trim().toLowerCase().replace(/\s+/g, '');
+      const shortId = user_id.slice(0, 6);
+      return `${cleanName}${shortId}@sfdcdemo.com`;
+    }
 
-            const eqPos = cookie.indexOf("=");
+    function createJwt({ user_id, email, name }) {
+      const secret = "l1MaqUaWo1V7OumDDUyzacJ7AgSUfceuyoYcoagILaY"; // demo-only
+      const header = { alg: "HS256", typ: "JWT" };
+      const payload = {
+        user_id,
+        email,
+        name,
+        iss: "demo-client",
+        iat: KJUR.jws.IntDate.get("now"),
+        exp: KJUR.jws.IntDate.get("now + 1hour")
+      };
+      return KJUR.jws.JWS.sign("HS256", JSON.stringify(header), JSON.stringify(payload), secret);
+    }
 
-            const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+    function updateUiIdentity({ user_id, name, email }) {
+      document.getElementById("currentName").textContent = name;
+      document.getElementById("currentEmail").textContent = email;
+      document.getElementById("currentUserId").textContent = user_id;
+    }
 
-            // Set the cookie's expiration date to a past date to delete it
+    function setIntercomSettingsAndBoot({ user_id, name, email }) {
+      const token = createJwt({ user_id, email, name });
 
-            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+      window.intercomSettings = {
+        api_base: "https://api-iam.intercom.io",
+        app_id: "dqzwuvbw",
+        user_id: "axa864",
+        email: "tessdemo@tester.com",
+        name: "Tess Sullivan"
+        //intercom_user_jwt: token
+        
+      };
 
-        }
+      updateUiIdentity({ user_id, name, email });
 
-        window.localStorage.clear();
-        window.sessionStorage.clear();
-        window.location.reload();
-
+      // reboot Intercom with the new identity
+      if (typeof window.Intercom === "function") {
+        window.Intercom("shutdown");
+        window.Intercom("boot", window.intercomSettings);
+      } else {
+        (window.Intercom || function(){ (window.Intercom.q = window.Intercom.q || []).push(arguments); })(
+          "boot",
+          window.intercomSettings
+        );
       }
-    </script>
-  </head>
-  <body class="p-6 flex flex-col flex-1 items-center justify-center min-h-screen bg-cover" style="background-image: url('https://downloads.intercomcdn.com/i/o/1051523575/8c16c6bb97ae791131ead20c/blur.jpg')">
-    <div class="flex flex-col space-y-2 items-center">
-      <div>
-        <img src="https://static.intercomassets.com/assets/default-avatars/fin/128-6a5eabbb84cc2b038b2afc6698ca0a974faf7adc9ea9f0fb3c3e78ac12543bc5.png" height="50" width="50"  >
-      </div>
-      <button class="bg-black text-white p-2 m-2 rounded hover:bg-opacity-75" onclick="reset()">Reset</button>
+
+      return token;
+    }
+
+    // Default flow: random name + derived email
+    function generateIdentityAndJwt() {
+      const name = randomName();
+      const user_id = randomUserId();
+      const email = emailFromNameAndUserId(name, user_id);
+      return setIntercomSettingsAndBoot({ user_id, name, email });
+    }
+
+    // Fully switch to a new random user/session (existing behavior)
+    function newUser() {
+      generateIdentityAndJwt();
+    }
+
+    // NEW: "User: David" button behavior
+    // When selected -> name = "David Spencer", email = "luis@mdlsolutions.net"
+    // Still generate a JWT using this data (and a new random user_id)
+    function selectDavidUser() {
+      const name = "David Spencer";
+      const email = "luis.herrerapettit@hq.intercom.com";
+      const user_id = "b6af668edb44d0bf12df09d758985b";
+      return setIntercomSettingsAndBoot({ user_id, name, email });
+    }
+  </script>
+</head>
+
+<body class="relative flex flex-col items-center justify-center min-h-screen overflow-hidden text-center text-white">
+
+  <!-- :movie_camera: Background Video -->
+  <video autoplay muted loop playsinline
+         class="absolute top-0 left-0 w-full h-full object-cover object-top z-[-2]">
+    <source src="https://videos.ctfassets.net/xny2w179f4ki/4qwcJQYYUbB2aQgIoSKu0B/18bb952c143cc39b5934bb21765cf2b4/Fin2_EnergySource_KW_v034_HybridSharpened_wParticles_WEB_10mb.mp4"
+            type="video/mp4">
+    Your browser does not support the video tag.
+  </video>
+
+  <!-- :new_moon: Dark overlay to tone down brightness -->
+  <div class="absolute inset-0 bg-gradient-to-b from-black via-black/70 to-[#2B0045]/80 z-[-1]"></div>
+
+  <!-- Main Content -->
+  <h1 class="text-4xl md:text-5xl font-bold mb-8 drop-shadow-lg">Fin for D&G</h1>
+
+  <div class="flex flex-col items-center space-y-4 bg-black/50 px-8 py-6 rounded-xl shadow-lg backdrop-blur-sm">
+    <img src="https://static.intercomassets.com/assets/default-avatars/fin/128-6a5eabbb84cc2b038b2afc6698ca0a974faf7adc9ea9f0fb3c3e78ac12543bc5.png"
+         height="60" width="60" alt="Fin Avatar" class="mx-auto">
+
+    <div class="space-y-1 text-sm opacity-90">
+      <div><span class="font-medium">User ID:</span> <span id="currentUserId"></span></div>
+      <div><span class="font-medium">Name:</span> <span id="currentName"></span></div>
+      <div><span class="font-medium">Email:</span> <span id="currentEmail"></span></div>
     </div>
-<button id="goToPortal">Go to Portal</button>
 
-<button onclick="openDeleteRequest()">
-    Request Data Deletion
-</button>
+    <div class="flex flex-col sm:flex-row gap-3 w-full justify-center">
+      <button class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium transition"
+              onclick="newUser()">
+        Switch User (Customer)
+      </button>
 
-<script>
-  function openDeleteRequest() {
-    Intercom('showNewMessage', 'I want to delete my game data');
-  }
-</script>
+      <!-- NEW BUTTON -->
+      <button class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg font-medium transition"
+              onclick="selectDavidUser()">
+        Candidate User
+      </button>
+    </div>
+  </div>
 
-<script>
-  document.getElementById("goToPortal").addEventListener("click", function() {
-    window.location.href = "portal/";
-  });
-</script>
+  <script>
+    // Generate the initial identity & boot the first session
+    generateIdentityAndJwt();
+  </script>
 
+  <!-- Intercom widget -->
+  <script>
+    (function () {
+      var w = window; var ic = w.Intercom;
+      if (typeof ic === "function") {
+        ic('boot', w.intercomSettings);
+      } else {
+        var d = document; var i = function () { i.c(arguments); }; i.q = [];
+        i.c = function (args) { i.q.push(args); }; w.Intercom = i;
+        var l = function () {
+          var s = d.createElement('script'); s.type = 'text/javascript'; s.async = true;
+          s.src = 'https://widget.intercom.io/widget/dqzwuvbw';
+          var x = d.getElementsByTagName('script')[0]; x.parentNode.insertBefore(s, x);
+        };
+        w.Intercom('boot', w.intercomSettings);
 
-
-<script>
-  window.intercomSettings = {
-    api_base: "https://api-iam.intercom.io",
-    app_id: "dqzwuvbw",
-    //intercom_user_jwt: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYXhhODY0IiwiZW1haWwiOiJsdWlzQG1kbHNvbHV0aW9ucy5uZXQiLCJuYW1lIjoiVGVzcyBTdWxsaXZhbiIsImlhdCI6MTc1ODAwNzAzOX0.s9J3RDQq8Og48lMar5cBpDyOgNBVh4Q2YsU6UQM7EP0",
-    user_id: "axa864",
-    email: "tessdemo@tester.com",
-    name: "Tess Sullivan"
-    //intercom_user_jwt: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMTUzNzg2IiwiaWF0IjoxNzU0Njg5ODgwfQ.2TpIL_dcAI5O8qp4XkunnDrcKzlijhtWklahbrm_HAs"
-    // In Salesforce, ensure that each user has a unique external_id, typically their user_id or email.
-    // In Intercom, when installing Messenger, pass a user_id that matches the external_id used for that user in Salesforce.
-    // If no user_id exists, the user's email is used instead to match the external_id in Salesforce.
-
-  };
-</script>
-
-
-
-<script>
-  // We pre-filled your app ID in the widget URL: 'https://widget.intercom.io/widget/dqzwuvbw'
-  (function(){var w=window;var ic=w.Intercom;if(typeof ic==="function"){ic('reattach_activator');ic('update',w.intercomSettings);}else{var d=document;var i=function(){i.c(arguments);};i.q=[];i.c=function(args){i.q.push(args);};w.Intercom=i;var l=function(){var s=d.createElement('script');s.type='text/javascript';s.async=true;s.src='https://widget.intercom.io/widget/dqzwuvbw
-';var x=d.getElementsByTagName('script')[0];x.parentNode.insertBefore(s,x);};if(document.readyState==='complete'){l();}else if(w.attachEvent){w.attachEvent('onload',l);}else{w.addEventListener('load',l,false);}}})();
-</script>
-
-
-
-
-
-  </body>
+        if (d.readyState === 'complete') { l(); }
+        else if (w.attachEvent) { w.attachEvent('onload', l); }
+        else { w.addEventListener('load', l, false); }
+      }
+    })();
+  </script>
+</body>
 </html>
